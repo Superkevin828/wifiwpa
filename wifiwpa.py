@@ -450,8 +450,9 @@ class crackwifi():
             
             # Pass password to airodump's sudo
             try:
-                process1.stdin.write(self.password + '\n')
-                process1.stdin.flush()
+                if process1.stdin:
+                    process1.stdin.write(self.password + '\n')
+                    process1.stdin.flush()
             except:
                 pass
             
@@ -481,12 +482,13 @@ class crackwifi():
                 )
                 
                 # Pass password
-                try:
-                    process2.stdin.write(self.password + '\n')
-                    process2.stdin.flush()
-                    process2.stdin.close()
-                except:
-                    pass
+                if process2.stdin is not None:
+                    try:
+                        process2.stdin.write(self.password + '\n')
+                        process2.stdin.flush()
+                        process2.stdin.close()
+                    except:
+                        pass
                 
                 # Wait for this round to complete
                 try:
@@ -604,6 +606,11 @@ class crackwifi():
             text=True
         )
         
+        if process.stdin is None:
+            raise RuntimeError("Unable to open stdin for aircrack-ng process")
+        if process.stdout is None:
+            raise RuntimeError("Unable to open stdout for aircrack-ng process")
+
         process.stdin.write(self.password + '\n')
         process.stdin.flush()
         

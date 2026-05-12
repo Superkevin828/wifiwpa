@@ -66,14 +66,14 @@ class AppState:
             self.current_scan_results = []
             self.cracker = None
             self.handshake_captured = False
-            self.crack_target = None
+            self.crack_target: Optional[Dict[str, str]] = None
             self._initialized = True
     
     def set_password(self, password: str):
         self.password = password
         self.cracker = crackwifi(password)
     
-    def get_password(self) -> str:
+    def get_password(self) -> str | None:
         return self.password
     
     def get_cracker(self):
@@ -233,7 +233,7 @@ class BackendInterface:
     
 
     @staticmethod
-    def crack_password(callback: Callable, wordlist_path: str = None) -> None:
+    def crack_password(callback: Callable, wordlist_path: Optional[str] = None) -> None:
         """Crack captured handshake"""
         def crack_thread(wl_path):
             try:
@@ -243,7 +243,7 @@ class BackendInterface:
                     return
                 
                 if not wl_path:
-                    wl_path = '/usr/share/wordlists/rockyou.txt
+                    wl_path = '/usr/share/wordlists/rockyou.txt'
                 
                 # Search for capture file
                 possible_paths = [
@@ -327,7 +327,7 @@ class BackendInterface:
 # ============================================================================
 class StyledButton(tk.Button):
     """Custom button styled for cybersecurity theme"""
-    def __init__(self, parent, text="", command=None, variant="default", **kwargs):
+    def __init__(self, parent, text: str = "", command: Optional[Callable] = None, variant: str = "default", **kwargs):
         colors_map = {
             "default": (Colors.SURFACE_HIGHER, Colors.PRIMARY),
             "primary": (Colors.PRIMARY_DARK, "#000000"),
@@ -339,7 +339,7 @@ class StyledButton(tk.Button):
         super().__init__(
             parent,
             text=text,
-            command=command,
+            command=command or (lambda: None),
             bg=bg,
             fg=fg,
             font=("Inter", 10, "bold"),
@@ -1510,7 +1510,8 @@ class DashboardScreen(tk.Frame):
                 self.clipboard_clear()
                 self.clipboard_append(password)
                 
-                target_name = AppState().crack_target.get('ssid', 'Unknown') if AppState().crack_target else 'Unknown'
+                target = AppState().crack_target
+                target_name = target.get('ssid', 'Unknown') if target else 'Unknown'
                 messagebox.showinfo("Password Cracked!",
                     f"Network: {target_name}\nPassword: {password}")
             
