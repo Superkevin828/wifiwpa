@@ -1,0 +1,9 @@
+# WiFi Auditor Requirements
+# tkinter - included with Python standard library
+# No additional Python packages required for core functionality
+
+# Build tools (for distribution)
+pyinstaller>=5.0
+aircrack-ng>=1.6
+tkinter
+python>=3.6
