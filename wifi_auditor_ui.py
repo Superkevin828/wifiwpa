@@ -325,7 +325,7 @@ class BackendInterface:
         threading.Thread(target=shutdown_thread, daemon=True).start()
 
     @staticmethod
-    def check_aircrack_installed(callback: Callable) -> Dict[str, any]:
+    def check_aircrack_installed(callback: Callable) -> Dict[str, any]: # type: ignore
         """Check if aircrack-ng is installed"""
         def check_thread():
             try:
