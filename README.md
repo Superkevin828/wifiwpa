@@ -17,4 +17,3 @@ Cybersecurity WiFi Auditor Suite with professional GUI interface.
 
 ### Linux
 ```bash
-sudo make install
