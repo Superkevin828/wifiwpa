@@ -327,7 +327,7 @@ class BackendInterface:
 # ============================================================================
 class StyledButton(tk.Button):
     """Custom button styled for cybersecurity theme"""
-    def __init__(self, parent, text: str = "", command: Optional[Callable] = None, variant: str = "default", **kwargs):
+    def __init__(self, parent, text="", command=None, variant="default", **kwargs):
         colors_map = {
             "default": (Colors.SURFACE_HIGHER, Colors.PRIMARY),
             "primary": (Colors.PRIMARY_DARK, "#000000"),
@@ -336,18 +336,22 @@ class StyledButton(tk.Button):
         }
         bg, fg = colors_map.get(variant, colors_map["default"])
         
+        # Get custom padding if provided, otherwise use defaults
+        custom_padx = kwargs.pop('padx', 16)
+        custom_pady = kwargs.pop('pady', 8)
+        
         super().__init__(
             parent,
             text=text,
-            command=command or (lambda: None),
+            command=command, # type: ignore
             bg=bg,
             fg=fg,
             font=("Inter", 10, "bold"),
             activebackground=Colors.PRIMARY_DIM,
             activeforeground="#000000",
             relief=tk.FLAT,
-            padx=16,
-            pady=8,
+            padx=custom_padx,
+            pady=custom_pady,
             cursor="hand2",
             bd=0,
             highlightthickness=0,
@@ -1071,24 +1075,46 @@ class DashboardScreen(tk.Frame):
         self.pages["crack"] = page
         
         # ============================================================
-        # LEFT PANEL CONTAINER (outer frame)
+        # LEFT PANEL CONTAINER
         # ============================================================
         left_panel_container = tk.Frame(page, bg=Colors.SURFACE, width=350)
         left_panel_container.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 4))
         left_panel_container.pack_propagate(False)
         
-        # Canvas for scrolling
-        left_canvas = tk.Canvas(left_panel_container, bg=Colors.SURFACE, highlightthickness=0)
-        left_scrollbar = tk.Scrollbar(left_panel_container, orient=tk.VERTICAL, command=left_canvas.yview)
+        # ============================================================
+        # SCROLLABLE AREA (with visible scrollbar)
+        # ============================================================
+        scroll_frame = tk.Frame(left_panel_container, bg=Colors.SURFACE)
+        scroll_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Create scrollbar FIRST
+        left_scrollbar = tk.Scrollbar(
+            scroll_frame, 
+            orient=tk.VERTICAL,
+            bg=Colors.SURFACE_HIGHER,
+            troughcolor=Colors.SURFACE_HIGH,
+            activebackground=Colors.PRIMARY,
+            width=12,
+            borderwidth=0,
+            highlightthickness=0
+        )
+        
+        # Create canvas SECOND, referencing the scrollbar
+        left_canvas = tk.Canvas(
+            scroll_frame, 
+            bg=Colors.SURFACE, 
+            highlightthickness=0,
+            yscrollcommand=left_scrollbar.set
+        )
+        
+        # Now configure scrollbar to control canvas
+        left_scrollbar.config(command=left_canvas.yview)
+        
         left_panel = tk.Frame(left_canvas, bg=Colors.SURFACE)
         
-        # Configure scrolling
         left_panel.bind("<Configure>", lambda e: left_canvas.configure(scrollregion=left_canvas.bbox("all")))
-        
-        # Create window inside canvas
         canvas_window = left_canvas.create_window((0, 0), window=left_panel, anchor="nw")
         
-        # Make canvas width match container
         def _configure_canvas_width(event):
             left_canvas.itemconfig(canvas_window, width=event.width)
         left_canvas.bind("<Configure>", _configure_canvas_width)
@@ -1096,32 +1122,82 @@ class DashboardScreen(tk.Frame):
         # Mouse wheel scrolling
         def _on_mousewheel(event):
             left_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        left_canvas.bind_all("<MouseWheel>", _on_mousewheel)
         
-        # Linux mouse wheel
-        def _on_mousewheel_linux(event):
-            left_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        left_canvas.bind("<Enter>", lambda e: left_canvas.bind_all("<MouseWheel>", _on_mousewheel))
+        left_canvas.bind("<Leave>", lambda e: left_canvas.unbind_all("<MouseWheel>"))
         left_canvas.bind("<Button-4>", lambda e: left_canvas.yview_scroll(-1, "units"))
         left_canvas.bind("<Button-5>", lambda e: left_canvas.yview_scroll(1, "units"))
         
-        left_canvas.configure(yscrollcommand=left_scrollbar.set)
-        
+        # Pack canvas on LEFT, scrollbar on RIGHT
         left_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         left_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         # ============================================================
-        # TARGET NETWORK SECTION
+        # FIXED BOTTOM SECTION (Crack button + password - always visible)
         # ============================================================
+        bottom_fixed = tk.Frame(left_panel_container, bg=Colors.SURFACE)
+        bottom_fixed.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=(4, 8))
+        
+        ttk.Separator(left_panel_container, orient=tk.HORIZONTAL).pack(fill=tk.X, side=tk.BOTTOM, padx=10)
+        
+        # CRACK PASSWORD BUTTON (always visible)
+        self.crack_button = StyledButton(
+            bottom_fixed,
+            text="🔓 CRACK PASSWORD",
+            command=self.crack_password,
+            variant="success",
+            padx=8,
+            pady=4
+        )
+        self.crack_button.pack(fill=tk.X, pady=(6, 4))
+        self.crack_button.config(state=tk.DISABLED)
+        
+        # CRACKED PASSWORD DISPLAY (always visible)
+        tk.Label(
+            bottom_fixed,
+            text="◇ CRACKED PASSWORD",
+            bg=Colors.SURFACE,
+            fg=Colors.PRIMARY,
+            font=("JetBrains Mono", 8, "bold")
+        ).pack(anchor="w", pady=(4, 2))
+        
+        self.password_display = tk.Entry(
+            bottom_fixed,
+            bg=Colors.TERM_BG,
+            fg=Colors.SUCCESS,
+            font=("JetBrains Mono", 11, "bold"),
+            justify=tk.CENTER,
+            relief=tk.FLAT,
+            state=tk.DISABLED
+        )
+        self.password_display.pack(fill=tk.X, pady=(0, 3))
+        
+        self.copy_button = StyledButton(
+            bottom_fixed,
+            text="📋 COPY PASSWORD",
+            command=self.copy_password,
+            variant="default",
+            padx=8,
+            pady=3
+        )
+        self.copy_button.pack(fill=tk.X, pady=(0, 2))
+        self.copy_button.config(state=tk.DISABLED)
+        
+        # ============================================================
+        # SCROLLABLE CONTENT
+        # ============================================================
+        
+        # TARGET NETWORK SECTION - REDUCED SIZE BY HALF
         tk.Label(
             left_panel,
             text="◇ TARGET NETWORK",
             bg=Colors.SURFACE,
             fg=Colors.PRIMARY,
             font=("JetBrains Mono", 9, "bold")
-        ).pack(anchor="w", padx=10, pady=(8, 6))
+        ).pack(anchor="w", padx=10, pady=(8, 4))  # Reduced pady from 6 to 4
         
-        self.crack_target_frame = tk.Frame(left_panel, bg=Colors.SURFACE_HIGH, padx=8, pady=6)
-        self.crack_target_frame.pack(fill=tk.X, padx=10, pady=(0, 4))
+        self.crack_target_frame = tk.Frame(left_panel, bg=Colors.SURFACE_HIGH, padx=6, pady=4)  # Reduced padx from 8 to 6, pady from 6 to 4
+        self.crack_target_frame.pack(fill=tk.X, padx=10, pady=(0, 3))  # Reduced pady from 4 to 3
         
         self.crack_target_label = tk.Label(
             self.crack_target_frame,
@@ -1133,18 +1209,19 @@ class DashboardScreen(tk.Frame):
         )
         self.crack_target_label.pack(anchor="w")
         
+        # Compact "Go to Network Scan" button - smaller and closer
         StyledButton(
             left_panel,
             text="← GO TO NETWORK SCAN",
             command=lambda: self.show_page("scan"),
-            variant="default"
-        ).pack(fill=tk.X, padx=10, pady=(0, 6))
+            variant="default",
+            padx=6,  # Reduced from 8
+            pady=3   # Reduced from 4
+        ).pack(fill=tk.X, padx=10, pady=(0, 4))  # Reduced pady from 6 to 4
         
-        ttk.Separator(left_panel, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=10, pady=4)
+        ttk.Separator(left_panel, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=10, pady=3)  # Reduced pady from 4 to 3
         
-        # ============================================================
         # ATTACK CONFIGURATION
-        # ============================================================
         tk.Label(
             left_panel,
             text="◇ ATTACK CONFIG",
@@ -1181,16 +1258,16 @@ class DashboardScreen(tk.Frame):
             left_panel,
             text="📡 CAPTURE HANDSHAKE",
             command=self.capture_handshake,
-            variant="primary"
+            variant="primary",
+            padx=8,
+            pady=4
         )
         self.capture_button.pack(fill=tk.X, padx=10, pady=(3, 3))
         self.capture_button.config(state=tk.DISABLED)
         
         ttk.Separator(left_panel, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=8, pady=3)
-    
-        # ============================================================
+
         # WORDLIST GENERATOR SECTION
-        # ============================================================
         tk.Label(
             left_panel,
             text="◇ WORDLIST GEN",
@@ -1199,7 +1276,6 @@ class DashboardScreen(tk.Frame):
             font=("JetBrains Mono", 9, "bold")
         ).pack(anchor="w", padx=10, pady=(6, 4))
         
-        # Base word
         tk.Label(
             left_panel,
             text="BASE WORD",
@@ -1220,7 +1296,6 @@ class DashboardScreen(tk.Frame):
         )
         base_word_entry.pack(fill=tk.X, padx=10, pady=(0, 3))
         
-        # Operator
         tk.Label(
             left_panel,
             text="OPERATOR (e.g., @, #, $)",
@@ -1241,7 +1316,6 @@ class DashboardScreen(tk.Frame):
         )
         operator_entry.pack(fill=tk.X, padx=10, pady=(0, 3))
         
-        # Numbers checkbox
         self.add_numbers_var = tk.BooleanVar(value=False)
         numbers_check = tk.Checkbutton(
             left_panel,
@@ -1256,20 +1330,19 @@ class DashboardScreen(tk.Frame):
         )
         numbers_check.pack(anchor="w", padx=10, pady=2)
         
-        # Generate button
         self.generate_wordlist_button = StyledButton(
             left_panel,
             text="🔧 GENERATE WORDLIST",
             command=self.generate_wordlist,
-            variant="default"
+            variant="default",
+            padx=8,
+            pady=4
         )
         self.generate_wordlist_button.pack(fill=tk.X, padx=10, pady=(4, 2))
         
         ttk.Separator(left_panel, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=10, pady=4)
         
-        # ============================================================
-        # WORDLIST PATH & CRACK SECTION
-        # ============================================================
+        # WORDLIST PATH
         tk.Label(
             left_panel,
             text="WORDLIST PATH",
@@ -1293,46 +1366,8 @@ class DashboardScreen(tk.Frame):
         )
         wordlist_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
-        # CRACK PASSWORD BUTTON
-        self.crack_button = StyledButton(
-            left_panel,
-            text="🔓 CRACK PASSWORD",
-            command=self.crack_password,
-            variant="success"
-        )
-        self.crack_button.pack(fill=tk.X, padx=10, pady=(6, 4))
-        self.crack_button.config(state=tk.DISABLED)
-        
-        # ============================================================
-        # CRACKED PASSWORD DISPLAY
-        # ============================================================
-        tk.Label(
-            left_panel,
-            text="◇ CRACKED PASSWORD",
-            bg=Colors.SURFACE,
-            fg=Colors.PRIMARY,
-            font=("JetBrains Mono", 9, "bold")
-        ).pack(anchor="w", padx=10, pady=(8, 4))
-        
-        self.password_display = tk.Entry(
-            left_panel,
-            bg=Colors.TERM_BG,
-            fg=Colors.SUCCESS,
-            font=("JetBrains Mono", 12, "bold"),
-            justify=tk.CENTER,
-            relief=tk.FLAT,
-            state=tk.DISABLED
-        )
-        self.password_display.pack(fill=tk.X, padx=10, pady=(0, 4))
-        
-        self.copy_button = StyledButton(
-            left_panel,
-            text="📋 COPY PASSWORD",
-            command=self.copy_password,
-            variant="default"
-        )
-        self.copy_button.pack(fill=tk.X, padx=10, pady=(0, 8))
-        self.copy_button.config(state=tk.DISABLED)
+        # Bottom padding for scrollable area
+        tk.Frame(left_panel, bg=Colors.SURFACE, height=10).pack()
         
         # ============================================================
         # RIGHT PANEL - TERMINAL
@@ -1705,6 +1740,33 @@ class WiFiAuditorApp(tk.Tk):
         else:
             self.frames[DashboardScreen].tkraise()
             self.frames[DashboardScreen].update_crack_target()
+
+    def on_closing(self):
+        """Called when user clicks X to close the window"""
+        if AppState().monitor_mode_active:
+            # Ask user if they want to stop monitor mode
+            response = messagebox.askyesnocancel(
+                "Exit WiFi Auditor",
+                "Monitor mode is still active!\n\n"
+                "Do you want to stop monitor mode before exiting?\n\n"
+                "  Yes = Stop monitor & exit\n"
+                "  No  = Exit without stopping (may leave interface in monitor mode)\n"
+                "  Cancel = Don't exit"
+            )
+            
+            if response is None:  # Cancel
+                return
+            elif response:  # Yes - stop monitor mode
+                # Stop monitor mode synchronously
+                try:
+                    cracker = AppState().get_cracker()
+                    if cracker:
+                        cracker.stop_monitor_mode()
+                        AppState().monitor_mode_active = False
+                except Exception as e:
+                    print(f"Error stopping monitor: {e}")
+        self.destroy()
+        
 
 def main():
     app = WiFiAuditorApp()
