@@ -1070,18 +1070,40 @@ class DashboardScreen(tk.Frame):
         page = tk.Frame(self.content_frame, bg=Colors.BACKGROUND)
         self.pages["crack"] = page
         
-        # Use a canvas with scrollbar for the left panel
+        # ============================================================
+        # LEFT PANEL CONTAINER (outer frame)
+        # ============================================================
         left_panel_container = tk.Frame(page, bg=Colors.SURFACE, width=350)
         left_panel_container.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 4))
         left_panel_container.pack_propagate(False)
         
-        # Canvas for scrolling left panel
+        # Canvas for scrolling
         left_canvas = tk.Canvas(left_panel_container, bg=Colors.SURFACE, highlightthickness=0)
         left_scrollbar = tk.Scrollbar(left_panel_container, orient=tk.VERTICAL, command=left_canvas.yview)
         left_panel = tk.Frame(left_canvas, bg=Colors.SURFACE)
         
+        # Configure scrolling
         left_panel.bind("<Configure>", lambda e: left_canvas.configure(scrollregion=left_canvas.bbox("all")))
-        left_canvas.create_window((0, 0), window=left_panel, anchor="nw", width=330)
+        
+        # Create window inside canvas
+        canvas_window = left_canvas.create_window((0, 0), window=left_panel, anchor="nw")
+        
+        # Make canvas width match container
+        def _configure_canvas_width(event):
+            left_canvas.itemconfig(canvas_window, width=event.width)
+        left_canvas.bind("<Configure>", _configure_canvas_width)
+        
+        # Mouse wheel scrolling
+        def _on_mousewheel(event):
+            left_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        left_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        
+        # Linux mouse wheel
+        def _on_mousewheel_linux(event):
+            left_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        left_canvas.bind("<Button-4>", lambda e: left_canvas.yview_scroll(-1, "units"))
+        left_canvas.bind("<Button-5>", lambda e: left_canvas.yview_scroll(1, "units"))
+        
         left_canvas.configure(yscrollcommand=left_scrollbar.set)
         
         left_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -1219,7 +1241,7 @@ class DashboardScreen(tk.Frame):
         )
         operator_entry.pack(fill=tk.X, padx=10, pady=(0, 3))
         
-        # Numbers checkbox - compact
+        # Numbers checkbox
         self.add_numbers_var = tk.BooleanVar(value=False)
         numbers_check = tk.Checkbutton(
             left_panel,
