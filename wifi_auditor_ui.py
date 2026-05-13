@@ -6,6 +6,8 @@ from typing import Callable, Optional, Dict
 import os
 import time
 import sys
+import subprocess
+import platform
 
 # Import your backend class
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -322,6 +324,100 @@ class BackendInterface:
         
         threading.Thread(target=shutdown_thread, daemon=True).start()
 
+    @staticmethod
+    def check_aircrack_installed(callback: Callable) -> Dict[str, any]:
+        """Check if aircrack-ng is installed"""
+        def check_thread():
+            try:
+                # Try to run aircrack-ng --version
+                import subprocess
+                result = subprocess.run(
+                    ["which", "aircrack-ng"],
+                    capture_output=True,
+                    timeout=5
+                )
+                
+                installed = result.returncode == 0
+                
+                callback({
+                    "status": "success",
+                    "installed": installed
+                })
+                
+                return {"installed": installed}
+            except Exception as e:
+                callback({
+                    "status": "error",
+                    "installed": False,
+                    "error": str(e)
+                })
+                return {"installed": False, "error": str(e)}
+        threading.Thread(target=check_thread, daemon=True).start()
+        return check_thread()
+
+    @staticmethod
+    def install_aircrack(callback: Callable) -> None:
+        """Install aircrack-ng using system package manager"""
+        def install_thread():
+            try:
+                
+                
+                
+                callback({"status": "progress", "message": "Starting installation..."})
+                
+                system = platform.system().lower()
+                
+                if "linux" in system:
+                    callback({"status": "progress", "message": "Updating package lists..."})
+                    
+                    # Update package manager
+                    subprocess.run(
+                        ["sudo", "apt-get", "update"],
+                        check=False,
+                        timeout=60
+                    )
+                    
+                    callback({"status": "progress", "message": "Installing aircrack-ng..."})
+                    
+                    # Install aircrack-ng
+                    result = subprocess.run(
+                        ["sudo", "apt-get", "install", "-y", "aircrack-ng"],
+                        capture_output=True,
+                        timeout=300
+                    )
+                    
+                    if result.returncode == 0:
+                        callback({
+                            "status": "success",
+                            "message": "Aircrack-ng installed successfully!"
+                        })
+                    else:
+                        error = result.stderr.decode() if result.stderr else "Installation failed"
+                        callback({
+                            "status": "error",
+                            "message": error
+                        })
+                else:
+                    callback({
+                        "status": "error",
+                        "message": f"Automatic installation not supported on {system}. Please install aircrack-ng manually."
+                    })
+            
+            except subprocess.TimeoutExpired:
+                callback({
+                    "status": "error",
+                    "message": "Installation timed out. Check your sudo password and try again."
+                })
+            except Exception as e:
+                callback({
+                    "status": "error",
+                    "message": f"Installation failed: {str(e)}"
+                })
+        
+        threading.Thread(target=install_thread, daemon=True).start()
+
+
+
 # ============================================================================
 # CUSTOM WIDGETS
 # ============================================================================
@@ -567,6 +663,190 @@ class StatusBar(tk.Frame):
 # ============================================================================
 # SCREENS
 # ============================================================================
+class AircrackCheckScreen(tk.Frame):
+    """Check if aircrack-ng is installed, prompt to install if not"""
+    def __init__(self, parent, on_aircrack_ready: Callable, **kwargs):
+        super().__init__(parent, bg=Colors.BACKGROUND, **kwargs)
+        self.on_aircrack_ready = on_aircrack_ready
+        
+        center = tk.Frame(self, bg=Colors.BACKGROUND)
+        center.place(relx=0.5, rely=0.4, anchor=tk.CENTER)
+        
+        tk.Label(
+            center,
+            text="WiFi Auditor Suite v2.0",
+            bg=Colors.BACKGROUND,
+            fg=Colors.PRIMARY,
+            font=("JetBrains Mono", 16, "bold")
+        ).pack(pady=(0, 5))
+        
+        tk.Label(
+            center,
+            text="System Dependency Check",
+            bg=Colors.BACKGROUND,
+            fg=Colors.ON_SURFACE_VARIANT,
+            font=("Inter", 10)
+        ).pack(pady=(0, 30))
+        
+        check_frame = tk.Frame(center, bg=Colors.SURFACE, padx=20, pady=20)
+        check_frame.pack(fill=tk.X, pady=10)
+        
+        tk.Label(
+            check_frame,
+            text="◆ CHECKING DEPENDENCIES",
+            bg=Colors.SURFACE,
+            fg=Colors.PRIMARY,
+            font=("JetBrains Mono", 10, "bold")
+        ).pack(anchor="w", pady=(0, 15))
+        
+        # Aircrack-ng check item
+        check_item_frame = tk.Frame(check_frame, bg=Colors.SURFACE)
+        check_item_frame.pack(anchor="w", fill=tk.X, pady=8)
+        
+        self.aircrack_status_label = tk.Label(
+            check_item_frame,
+            text="⟳ aircrack-ng",
+            bg=Colors.SURFACE,
+            fg=Colors.WARNING,
+            font=("JetBrains Mono", 9)
+        )
+        self.aircrack_status_label.pack(side=tk.LEFT)
+        
+        self.aircrack_result_label = tk.Label(
+            check_item_frame,
+            text="Checking...",
+            bg=Colors.SURFACE,
+            fg=Colors.ON_SURFACE_VARIANT,
+            font=("JetBrains Mono", 8)
+        )
+        self.aircrack_result_label.pack(side=tk.RIGHT)
+        
+        self.progress = ttk.Progressbar(
+            check_frame,
+            length=300,
+            mode='indeterminate',
+            style='Cyber.Horizontal.TProgressbar'
+        )
+        self.progress.pack(pady=(15, 0))
+        self.progress.start()
+        
+        self.status_label = tk.Label(
+            center,
+            text="",
+            bg=Colors.BACKGROUND,
+            fg=Colors.PRIMARY,
+            font=("JetBrains Mono", 9)
+        )
+        self.status_label.pack(pady=(20, 0))
+        
+        # Buttons frame (initially hidden)
+        self.button_frame = tk.Frame(center, bg=Colors.BACKGROUND)
+        self.button_frame.pack(pady=(20, 0))
+        
+        self.install_button = StyledButton(
+            self.button_frame,
+            text="▶ INSTALL AIRCRACK-NG",
+            command=self.install_aircrack,
+            variant="primary"
+        )
+        self.install_button.pack(side=tk.LEFT, padx=4)
+        self.install_button.config(state=tk.DISABLED)
+        
+        self.continue_button = StyledButton(
+            self.button_frame,
+            text="▶ CONTINUE",
+            command=self.on_aircrack_ready,
+            variant="success"
+        )
+        self.continue_button.pack(side=tk.LEFT, padx=4)
+        self.continue_button.config(state=tk.DISABLED)
+        
+        tk.Label(
+            center,
+            text="Build 2024.1 | Linux Edition",
+            bg=Colors.BACKGROUND,
+            fg=Colors.ON_SURFACE_VARIANT,
+            font=("JetBrains Mono", 7)
+        ).pack(pady=(30, 0))
+        
+        # Start checking
+        self.check_dependencies()
+    
+    def check_dependencies(self):
+        """Check if aircrack-ng is installed"""
+        def check_thread():
+            try:
+                # Try to import/check aircrack-ng
+                result = BackendInterface.check_aircrack_installed(lambda x: None)
+                self.after(0, lambda: self._on_check_complete(result))
+            except Exception as e:
+                self.after(0, lambda: self._on_check_complete({"installed": False, "error": str(e)}))
+        
+        threading.Thread(target=check_thread, daemon=True).start()
+    
+    def _on_check_complete(self, result):
+        """Handle check completion"""
+        self.progress.stop()
+        self.progress.pack_forget()
+        
+        if result.get("installed"):
+            # Aircrack-ng is installed
+            self.aircrack_status_label.config(text="✓ aircrack-ng", fg=Colors.SUCCESS)
+            self.aircrack_result_label.config(
+                text="Installed",
+                fg=Colors.SUCCESS
+            )
+            self.status_label.config(text="All dependencies ready!", fg=Colors.SUCCESS)
+            self.continue_button.config(state=tk.NORMAL)
+        else:
+            # Aircrack-ng is NOT installed
+            self.aircrack_status_label.config(text="✗ aircrack-ng", fg=Colors.ERROR)
+            self.aircrack_result_label.config(
+                text="Not installed",
+                fg=Colors.ERROR
+            )
+            self.status_label.config(
+                text="Please install aircrack-ng to continue",
+                fg=Colors.ERROR
+            )
+            self.install_button.config(state=tk.NORMAL)
+    
+    def install_aircrack(self):
+        """Start aircrack-ng installation"""
+        response = messagebox.askyesno(
+            "Install Aircrack-ng",
+            "This will install aircrack-ng and its dependencies.\n\n"
+            "You may be prompted for your sudo password.\n\n"
+            "Continue with installation?"
+        )
+        
+        if not response:
+            return
+        
+        self.install_button.config(state=tk.DISABLED, text="INSTALLING...")
+        self.status_label.config(text="Installing aircrack-ng...", fg=Colors.WARNING)
+        
+        def on_install_complete(result):
+            if result.get("status") == "success":
+                self.status_label.config(
+                    text="✓ Aircrack-ng installed successfully!",
+                    fg=Colors.SUCCESS
+                )
+                self.aircrack_status_label.config(text="✓ aircrack-ng", fg=Colors.SUCCESS)
+                self.aircrack_result_label.config(text="Installed", fg=Colors.SUCCESS)
+                self.continue_button.config(state=tk.NORMAL)
+                self.install_button.config(state=tk.DISABLED)
+                self.after(1500, self.on_aircrack_ready)
+            else:
+                self.install_button.config(state=tk.NORMAL, text="▶ INSTALL AIRCRACK-NG")
+                error_msg = result.get("message", "Installation failed")
+                self.status_label.config(text=f"✗ {error_msg}", fg=Colors.ERROR)
+                messagebox.showerror("Installation Failed", error_msg)
+        
+        BackendInterface.install_aircrack(on_install_complete)
+
+
+
 class SplashScreen(tk.Frame):
     """Splash/initialization screen with password entry"""
     def __init__(self, parent, on_continue: Callable, **kwargs):
@@ -1078,126 +1358,84 @@ class DashboardScreen(tk.Frame):
         # LEFT PANEL CONTAINER
         # ============================================================
         left_panel_container = tk.Frame(page, bg=Colors.SURFACE, width=350)
-        left_panel_container.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 4))
+        left_panel_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
         left_panel_container.pack_propagate(False)
         
         # ============================================================
-        # SCROLLABLE AREA (with visible scrollbar)
+        # SCROLLABLE AREA - FIXED VERSION
         # ============================================================
-        scroll_frame = tk.Frame(left_panel_container, bg=Colors.SURFACE)
-        scroll_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Create scrollbar FIRST
+        # Canvas for scrolling
+        left_canvas = tk.Canvas(
+            left_panel_container,
+            bg=Colors.SURFACE,
+            highlightthickness=0,
+            relief=tk.FLAT
+        )
+        
+        # Scrollbar (visible on right)
         left_scrollbar = tk.Scrollbar(
-            scroll_frame, 
+            left_panel_container,
             orient=tk.VERTICAL,
+            command=left_canvas.yview,
             bg=Colors.SURFACE_HIGHER,
             troughcolor=Colors.SURFACE_HIGH,
             activebackground=Colors.PRIMARY,
-            width=12,
+            width=14,
             borderwidth=0,
             highlightthickness=0
         )
         
-        # Create canvas SECOND, referencing the scrollbar
-        left_canvas = tk.Canvas(
-            scroll_frame, 
-            bg=Colors.SURFACE, 
-            highlightthickness=0,
-            yscrollcommand=left_scrollbar.set
-        )
-        
-        # Now configure scrollbar to control canvas
-        left_scrollbar.config(command=left_canvas.yview)
-        
+        # Inner frame to hold content
         left_panel = tk.Frame(left_canvas, bg=Colors.SURFACE)
         
-        left_panel.bind("<Configure>", lambda e: left_canvas.configure(scrollregion=left_canvas.bbox("all")))
+        # Create window in canvas
         canvas_window = left_canvas.create_window((0, 0), window=left_panel, anchor="nw")
         
-        def _configure_canvas_width(event):
+        # Configure canvas scrolling
+        left_canvas.configure(yscrollcommand=left_scrollbar.set)
+        
+        # Update scroll region when inner frame changes
+        def on_frame_configure(event=None):
+            left_canvas.configure(scrollregion=left_canvas.bbox("all"))
+        
+        left_panel.bind("<Configure>", on_frame_configure)
+        
+        # Make canvas window width match canvas width
+        def on_canvas_configure(event):
             left_canvas.itemconfig(canvas_window, width=event.width)
-        left_canvas.bind("<Configure>", _configure_canvas_width)
         
-        # Mouse wheel scrolling
-        def _on_mousewheel(event):
-            left_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        left_canvas.bind("<Configure>", on_canvas_configure)
         
-        left_canvas.bind("<Enter>", lambda e: left_canvas.bind_all("<MouseWheel>", _on_mousewheel))
-        left_canvas.bind("<Leave>", lambda e: left_canvas.unbind_all("<MouseWheel>"))
-        left_canvas.bind("<Button-4>", lambda e: left_canvas.yview_scroll(-1, "units"))
-        left_canvas.bind("<Button-5>", lambda e: left_canvas.yview_scroll(1, "units"))
-        
-        # Pack canvas on LEFT, scrollbar on RIGHT
+        # Pack canvas and scrollbar
         left_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         left_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # ============================================================
-        # FIXED BOTTOM SECTION (Crack button + password - always visible)
-        # ============================================================
-        bottom_fixed = tk.Frame(left_panel_container, bg=Colors.SURFACE)
-        bottom_fixed.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=(4, 8))
+        # Mouse wheel scrolling - FIXED
+        def on_mousewheel(event):
+            left_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
         
-        ttk.Separator(left_panel_container, orient=tk.HORIZONTAL).pack(fill=tk.X, side=tk.BOTTOM, padx=10)
+        # Bind mousewheel when mouse enters canvas
+        left_canvas.bind("<MouseWheel>", on_mousewheel)
+        left_panel.bind("<MouseWheel>", on_mousewheel)
         
-        # CRACK PASSWORD BUTTON (always visible)
-        self.crack_button = StyledButton(
-            bottom_fixed,
-            text="🔓 CRACK PASSWORD",
-            command=self.crack_password,
-            variant="success",
-            padx=8,
-            pady=4
-        )
-        self.crack_button.pack(fill=tk.X, pady=(6, 4))
-        self.crack_button.config(state=tk.DISABLED)
-        
-        # CRACKED PASSWORD DISPLAY (always visible)
-        tk.Label(
-            bottom_fixed,
-            text="◇ CRACKED PASSWORD",
-            bg=Colors.SURFACE,
-            fg=Colors.PRIMARY,
-            font=("JetBrains Mono", 8, "bold")
-        ).pack(anchor="w", pady=(4, 2))
-        
-        self.password_display = tk.Entry(
-            bottom_fixed,
-            bg=Colors.TERM_BG,
-            fg=Colors.SUCCESS,
-            font=("JetBrains Mono", 11, "bold"),
-            justify=tk.CENTER,
-            relief=tk.FLAT,
-            state=tk.DISABLED
-        )
-        self.password_display.pack(fill=tk.X, pady=(0, 3))
-        
-        self.copy_button = StyledButton(
-            bottom_fixed,
-            text="📋 COPY PASSWORD",
-            command=self.copy_password,
-            variant="default",
-            padx=8,
-            pady=3
-        )
-        self.copy_button.pack(fill=tk.X, pady=(0, 2))
-        self.copy_button.config(state=tk.DISABLED)
+        # Linux scroll support
+        left_canvas.bind("<Button-4>", lambda e: left_canvas.yview_scroll(-3, "units"))
+        left_canvas.bind("<Button-5>", lambda e: left_canvas.yview_scroll(3, "units"))
         
         # ============================================================
-        # SCROLLABLE CONTENT
+        # TARGET NETWORK SECTION
         # ============================================================
-        
-        # TARGET NETWORK SECTION - REDUCED SIZE BY HALF
         tk.Label(
             left_panel,
             text="◇ TARGET NETWORK",
             bg=Colors.SURFACE,
             fg=Colors.PRIMARY,
             font=("JetBrains Mono", 9, "bold")
-        ).pack(anchor="w", padx=10, pady=(8, 4))  # Reduced pady from 6 to 4
+        ).pack(anchor="w", padx=10, pady=(8, 4))
         
-        self.crack_target_frame = tk.Frame(left_panel, bg=Colors.SURFACE_HIGH, padx=6, pady=4)  # Reduced padx from 8 to 6, pady from 6 to 4
-        self.crack_target_frame.pack(fill=tk.X, padx=10, pady=(0, 3))  # Reduced pady from 4 to 3
+        self.crack_target_frame = tk.Frame(left_panel, bg=Colors.SURFACE_HIGH, padx=6, pady=4)
+        self.crack_target_frame.pack(fill=tk.X, padx=10, pady=(0, 3))
         
         self.crack_target_label = tk.Label(
             self.crack_target_frame,
@@ -1209,19 +1447,21 @@ class DashboardScreen(tk.Frame):
         )
         self.crack_target_label.pack(anchor="w")
         
-        # Compact "Go to Network Scan" button - smaller and closer
+        # Button to switch to scan tab
         StyledButton(
             left_panel,
             text="← GO TO NETWORK SCAN",
             command=lambda: self.show_page("scan"),
             variant="default",
-            padx=6,  # Reduced from 8
-            pady=3   # Reduced from 4
-        ).pack(fill=tk.X, padx=10, pady=(0, 4))  # Reduced pady from 6 to 4
+            padx=6,
+            pady=3
+        ).pack(fill=tk.X, padx=10, pady=(0, 4))
         
-        ttk.Separator(left_panel, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=10, pady=3)  # Reduced pady from 4 to 3
+        ttk.Separator(left_panel, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=10, pady=3)
         
+        # ============================================================
         # ATTACK CONFIGURATION
+        # ============================================================
         tk.Label(
             left_panel,
             text="◇ ATTACK CONFIG",
@@ -1266,8 +1506,10 @@ class DashboardScreen(tk.Frame):
         self.capture_button.config(state=tk.DISABLED)
         
         ttk.Separator(left_panel, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=8, pady=3)
-
+        
+        # ============================================================
         # WORDLIST GENERATOR SECTION
+        # ============================================================
         tk.Label(
             left_panel,
             text="◇ WORDLIST GEN",
@@ -1342,7 +1584,9 @@ class DashboardScreen(tk.Frame):
         
         ttk.Separator(left_panel, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=10, pady=4)
         
+        # ============================================================
         # WORDLIST PATH
+        # ============================================================
         tk.Label(
             left_panel,
             text="WORDLIST PATH",
@@ -1366,8 +1610,56 @@ class DashboardScreen(tk.Frame):
         )
         wordlist_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
-        # Bottom padding for scrollable area
-        tk.Frame(left_panel, bg=Colors.SURFACE, height=10).pack()
+        # ============================================================
+        # CRACK PASSWORD BUTTON (sticky to bottom)
+        # ============================================================
+        tk.Label(
+            left_panel,
+            text="",
+            bg=Colors.SURFACE
+        ).pack(pady=10)  # Spacer
+        
+        self.crack_button = StyledButton(
+            left_panel,
+            text="🔓 CRACK PASSWORD",
+            command=self.crack_password,
+            variant="success",
+            padx=8,
+            pady=4
+        )
+        self.crack_button.pack(fill=tk.X, padx=10, pady=(6, 4))
+        self.crack_button.config(state=tk.DISABLED)
+        
+        # CRACKED PASSWORD DISPLAY
+        tk.Label(
+            left_panel,
+            text="◇ CRACKED PASSWORD",
+            bg=Colors.SURFACE,
+            fg=Colors.PRIMARY,
+            font=("JetBrains Mono", 8, "bold")
+        ).pack(anchor="w", padx=10, pady=(4, 2))
+        
+        self.password_display = tk.Entry(
+            left_panel,
+            bg=Colors.TERM_BG,
+            fg=Colors.SUCCESS,
+            font=("JetBrains Mono", 11, "bold"),
+            justify=tk.CENTER,
+            relief=tk.FLAT,
+            state=tk.DISABLED
+        )
+        self.password_display.pack(fill=tk.X, padx=10, pady=(0, 3))
+        
+        self.copy_button = StyledButton(
+            left_panel,
+            text="📋 COPY PASSWORD",
+            command=self.copy_password,
+            variant="default",
+            padx=8,
+            pady=3
+        )
+        self.copy_button.pack(fill=tk.X, padx=10, pady=(0, 10))
+        self.copy_button.config(state=tk.DISABLED)
         
         # ============================================================
         # RIGHT PANEL - TERMINAL
@@ -1692,6 +1984,9 @@ class WiFiAuditorApp(tk.Tk):
         self.config(bg=Colors.BACKGROUND)
         self.minsize(1200, 700)
         
+        # ✅ CONNECT THE ON-CLOSE HANDLER
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
         self.setup_styles()
         
         self.container = tk.Frame(self, bg=Colors.BACKGROUND)
@@ -1700,9 +1995,22 @@ class WiFiAuditorApp(tk.Tk):
         self.container.grid_columnconfigure(0, weight=1)
         
         self.frames = {}
-        self.show_splash()
-        self.center_window()
+        
+        # ✅ START WITH AIRCRACK CHECK INSTEAD OF SPLASH
+        self.check_and_proceed()
     
+        self.center_window()
+    def check_and_proceed(self):
+        """Quick check if aircrack-ng is installed, skip check screen if so"""
+        def on_check_result(result):
+            if result.get("installed"):
+                print('Already installed → go directly to splash')
+                self.show_splash()
+            else:
+                print('Not installed → show check/install screen')
+                self.show_aircrack_check()
+        
+        BackendInterface.check_aircrack_installed(on_check_result)
     def setup_styles(self):
         style = ttk.Style()
         style.theme_use('clam')
@@ -1724,7 +2032,21 @@ class WiFiAuditorApp(tk.Tk):
         y = (self.winfo_screenheight() // 2) - (height // 2)
         self.geometry(f'{width}x{height}+{x}+{y}')
     
+    # ✅ NEW: Show aircrack check screen
+    def show_aircrack_check(self):
+        """Show aircrack-ng installation check screen"""
+        if AircrackCheckScreen not in self.frames:
+            frame = AircrackCheckScreen(
+                self.container,
+                on_aircrack_ready=self.show_splash
+            )
+            self.frames[AircrackCheckScreen] = frame
+            frame.grid(row=0, column=0, sticky="nsew")
+        else:
+            self.frames[AircrackCheckScreen].tkraise()
+    
     def show_splash(self):
+        """Show password entry splash screen"""
         if SplashScreen not in self.frames:
             frame = SplashScreen(self.container, on_continue=self.show_dashboard)
             self.frames[SplashScreen] = frame
@@ -1733,6 +2055,7 @@ class WiFiAuditorApp(tk.Tk):
             self.frames[SplashScreen].tkraise()
     
     def show_dashboard(self):
+        """Show main dashboard"""
         if DashboardScreen not in self.frames:
             frame = DashboardScreen(self.container)
             self.frames[DashboardScreen] = frame
@@ -1740,33 +2063,73 @@ class WiFiAuditorApp(tk.Tk):
         else:
             self.frames[DashboardScreen].tkraise()
             self.frames[DashboardScreen].update_crack_target()
-
+    
+    # ✅ IMPROVED: On-close handler with proper monitor mode shutdown
     def on_closing(self):
-        """Called when user clicks X to close the window"""
+        """Handle window close event"""
         if AppState().monitor_mode_active:
-            # Ask user if they want to stop monitor mode
+            # Ask user what to do
             response = messagebox.askyesnocancel(
                 "Exit WiFi Auditor",
                 "Monitor mode is still active!\n\n"
-                "Do you want to stop monitor mode before exiting?\n\n"
-                "  Yes = Stop monitor & exit\n"
-                "  No  = Exit without stopping (may leave interface in monitor mode)\n"
-                "  Cancel = Don't exit"
+                "Closing the application will:\n"
+                "  • Stop monitor mode on wlan0\n"
+                "  • Restore network services\n"
+                "  • Return interface to managed mode\n\n"
+                "Do you want to continue?"
             )
             
             if response is None:  # Cancel
                 return
-            elif response:  # Yes - stop monitor mode
-                # Stop monitor mode synchronously
+            elif response is True:  # Yes - proceed with graceful shutdown
+                self.status_bar = getattr(self, 'status_bar', None)
+                if self.status_bar:
+                    self.status_bar.set_status("● SHUTTING DOWN...", Colors.WARNING)
+                
                 try:
+                    # Stop monitor mode
                     cracker = AppState().get_cracker()
                     if cracker:
                         cracker.stop_monitor_mode()
                         AppState().monitor_mode_active = False
+                        
+                        # Brief delay to let commands complete
+                        import time
+                        time.sleep(0.5)
                 except Exception as e:
-                    print(f"Error stopping monitor: {e}")
-        self.destroy()
+                    print(f"Error during shutdown: {e}")
+                    messagebox.showerror(
+                        "Shutdown Error",
+                        f"Error stopping monitor mode:\n{str(e)}\n\n"
+                        "You may need to manually restore your network interface.\n"
+                        "Run: sudo airmon-ng stop wlan0mon"
+                    )
         
+        # Destroy window
+        self.destroy()
+
+
+def show_installation_help():
+        """Show help for manual aircrack-ng installation"""
+        help_text = """
+    If automatic installation fails, install aircrack-ng manually:
+
+    Ubuntu/Debian:
+        sudo apt-get update
+        sudo apt-get install -y aircrack-ng
+
+    Fedora/RHEL:
+        sudo dnf install -y aircrack-ng
+
+    Arch:
+        sudo pacman -S aircrack-ng
+
+    macOS (Homebrew):
+        brew install aircrack-ng
+
+    After installation, restart the WiFi Auditor application.
+        """
+        messagebox.showinfo("Manual Installation", help_text)
 
 def main():
     app = WiFiAuditorApp()
